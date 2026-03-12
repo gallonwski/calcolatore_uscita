@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+alt.renderers.set_embed_options(theme=None)
 
 # ======================================================
 # PAGE CONFIG
@@ -660,6 +661,19 @@ div[data-testid="stNumberInput"] button:hover {{
     color: var(--text) !important;
 }}
 
+div[data-testid="stAltairChart"] {{
+    background: #FFFFFF !important;
+    border-radius: 16px;
+}}
+
+div[data-testid="stAltairChart"] > div {{
+    background: #FFFFFF !important;
+}}
+
+div[data-testid="stAltairChart"] canvas {{
+    background: #FFFFFF !important;
+}}
+
 input, textarea {{
     color: var(--text) !important;
     -webkit-text-fill-color: var(--text) !important;
@@ -1001,6 +1015,7 @@ def build_compounding_table(
 def chart_theme() -> dict:
     return {
         "config": {
+            "background": "#FFFFFF",
             "axis": {
                 "labelColor": THEME["text_muted"],
                 "titleColor": THEME["text_soft"],
@@ -1015,9 +1030,21 @@ def chart_theme() -> dict:
                 "labelColor": THEME["text_soft"],
                 "titleColor": THEME["text"],
             },
-            "view": {"stroke": None},
+            "view": {
+                "stroke": None,
+                "fill": "#FFFFFF",
+            },
         }
     }
+
+def finalize_chart(chart: alt.Chart, height: int) -> alt.Chart:
+    return (
+        chart
+        .properties(height=height, background="#FFFFFF")
+        .configure(**chart_theme()["config"])
+        .configure_view(stroke=None, fill="#FFFFFF")
+    )
+
 
 
 def create_growth_chart(df: pd.DataFrame) -> alt.Chart:
@@ -1071,10 +1098,7 @@ def create_growth_chart(df: pd.DataFrame) -> alt.Chart:
         tooltip=tooltip,
     )
 
-    return (area + contribution_line + points + last_point).properties(height=340).configure(
-        **chart_theme()["config"]
-    )
-
+    return finalize_chart(area + contribution_line + points + last_point, 340)
 
 def create_scenario_comparison_chart(stay_value: float, alternative_value: float) -> alt.Chart:
     comp_df = pd.DataFrame(
@@ -1110,7 +1134,7 @@ def create_scenario_comparison_chart(stay_value: float, alternative_value: float
         text=alt.Text("Value:Q", format=",.0f"),
     )
 
-    return (bars + labels).properties(height=310).configure(**chart_theme()["config"])
+    return finalize_chart(bars + labels, 310)
 
 
 def create_lost_compounding_chart(df_compounding: pd.DataFrame, selected_exit_year: int) -> alt.Chart:
@@ -1164,9 +1188,7 @@ def create_lost_compounding_chart(df_compounding: pd.DataFrame, selected_exit_ye
         tooltip=tooltip,
     )
 
-    return (bars + trend_line + selected_point).properties(height=320).configure(
-        **chart_theme()["config"]
-    )
+    return finalize_chart(bars + trend_line + selected_point, 320)
 
 
 # ======================================================
