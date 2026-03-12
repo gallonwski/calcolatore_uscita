@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-alt.renderers.set_embed_options(theme=None)
 
 # ======================================================
 # PAGE CONFIG
@@ -27,32 +26,37 @@ st.set_page_config(
 # ======================================================
 
 THEME = {
-    "bg": "#F4F7FB",
+    "bg": "#F5F7FB",
     "bg_top": "#FBFCFE",
     "surface": "#FFFFFF",
-    "surface_soft": "#F8FAFC",
-    "surface_tint": "#F6F9FF",
+    "surface_soft": "#FAFBFD",
+    "surface_alt": "#F3F6FA",
+    "surface_tint": "#F7FAFF",
     "text": "#0F172A",
     "text_soft": "#334155",
     "text_muted": "#64748B",
     "border": "#E2E8F0",
     "border_soft": "#EDF2F7",
-    "grid": "#E8EEF5",
+    "grid": "#E9EEF5",
     "primary": "#2563EB",
     "primary_dark": "#1D4ED8",
     "primary_soft": "#DBEAFE",
-    "secondary": "#7C3AED",
-    "secondary_soft": "#E9D5FF",
+    "accent": "#7C3AED",
     "success": "#0F9F6E",
     "warning": "#B7791F",
     "danger": "#D14343",
-    "danger_soft": "#FEE2E2",
     "shadow_sm": "0 1px 2px rgba(15, 23, 42, 0.04)",
-    "shadow_md": "0 12px 28px rgba(15, 23, 42, 0.06)",
+    "shadow_md": "0 10px 30px rgba(15, 23, 42, 0.06)",
     "shadow_lg": "0 18px 48px rgba(15, 23, 42, 0.08)",
     "radius_sm": "16px",
     "radius_md": "20px",
     "radius_lg": "24px",
+    "chart_main": "#2563EB",
+    "chart_main_soft": "#C7DBFF",
+    "chart_alt": "#7C3AED",
+    "chart_neutral": "#94A3B8",
+    "chart_loss": "#F97316",
+    "chart_loss_soft": "#FED7AA",
 }
 
 
@@ -80,7 +84,6 @@ class ExitMetrics:
     exit_value_gross: float
     contributed_until_exit: float
     exit_penalty_eur: float
-    available_net_capital: float
     final_value_alternative: float
     opportunity_cost_abs: float
     opportunity_cost_pct: float
@@ -88,20 +91,23 @@ class ExitMetrics:
 
 
 @dataclass(frozen=True)
+class CompoundingMetrics:
+    exit_value_gross: float
+    contributed_until_exit: float
+    exit_penalty_eur: float
+    available_net_capital: float
+    final_value_stay: float
+    lost_compounding_abs: float
+    lost_compounding_pct: float
+
+
+@dataclass(frozen=True)
 class MonteCarloMetrics:
     probability_stay_better: float
-    expected_shortfall_exit: float
+    expected_cost_mc: float
     stay_mean: float
     exit_mean: float
     used_volatility_pct: float
-    stay_p10: float
-    stay_p50: float
-    stay_p90: float
-    exit_p10: float
-    exit_p50: float
-    exit_p90: float
-    break_even_probability: float
-    distribution_df: pd.DataFrame
 
 
 # ======================================================
@@ -129,12 +135,12 @@ def delta_class(value: float, positive_is_good: bool = True) -> str:
     return "delta-positive" if good else "delta-negative"
 
 
-def recommendation_state(probability: float) -> str:
-    if probability >= 65:
-        return "positive"
-    if probability <= 35:
-        return "negative"
-    return "neutral"
+def outcome_class(value: float) -> str:
+    if value > 0:
+        return "state-positive"
+    if value < 0:
+        return "state-negative"
+    return "state-neutral"
 
 
 # ======================================================
@@ -147,47 +153,46 @@ def apply_theme() -> None:
             f"""
 <style>
 :root {{
-    --bg: {THEME['bg']};
-    --bg-top: {THEME['bg_top']};
-    --surface: {THEME['surface']};
-    --surface-soft: {THEME['surface_soft']};
-    --surface-tint: {THEME['surface_tint']};
-    --text: {THEME['text']};
-    --text-soft: {THEME['text_soft']};
-    --text-muted: {THEME['text_muted']};
-    --border: {THEME['border']};
-    --border-soft: {THEME['border_soft']};
-    --grid: {THEME['grid']};
-    --primary: {THEME['primary']};
-    --primary-dark: {THEME['primary_dark']};
-    --primary-soft: {THEME['primary_soft']};
-    --secondary: {THEME['secondary']};
-    --secondary-soft: {THEME['secondary_soft']};
-    --success: {THEME['success']};
-    --warning: {THEME['warning']};
-    --danger: {THEME['danger']};
-    --danger-soft: {THEME['danger_soft']};
-    --shadow-sm: {THEME['shadow_sm']};
-    --shadow-md: {THEME['shadow_md']};
-    --shadow-lg: {THEME['shadow_lg']};
-    --radius-sm: {THEME['radius_sm']};
-    --radius-md: {THEME['radius_md']};
-    --radius-lg: {THEME['radius_lg']};
+    --bg: {THEME["bg"]};
+    --bg-top: {THEME["bg_top"]};
+    --surface: {THEME["surface"]};
+    --surface-soft: {THEME["surface_soft"]};
+    --surface-alt: {THEME["surface_alt"]};
+    --surface-tint: {THEME["surface_tint"]};
+    --text: {THEME["text"]};
+    --text-soft: {THEME["text_soft"]};
+    --text-muted: {THEME["text_muted"]};
+    --border: {THEME["border"]};
+    --border-soft: {THEME["border_soft"]};
+    --grid: {THEME["grid"]};
+    --primary: {THEME["primary"]};
+    --primary-dark: {THEME["primary_dark"]};
+    --primary-soft: {THEME["primary_soft"]};
+    --accent: {THEME["accent"]};
+    --success: {THEME["success"]};
+    --warning: {THEME["warning"]};
+    --danger: {THEME["danger"]};
+    --shadow-sm: {THEME["shadow_sm"]};
+    --shadow-md: {THEME["shadow_md"]};
+    --shadow-lg: {THEME["shadow_lg"]};
+    --radius-sm: {THEME["radius_sm"]};
+    --radius-md: {THEME["radius_md"]};
+    --radius-lg: {THEME["radius_lg"]};
 }}
 
 .stApp {{
     background:
-        radial-gradient(circle at top left, rgba(37,99,235,0.05), transparent 28%),
-        linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 42%, var(--bg) 100%);
+        radial-gradient(circle at top left, rgba(37,99,235,0.06), transparent 28%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 40%, var(--bg) 100%);
     color: var(--text);
 }}
 
 .block-container {{
-    max-width: 1360px;
-    padding-top: 1.25rem;
-    padding-bottom: 3rem;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    max-width: 1320px;
+    padding-top: 1.35rem;
+    padding-bottom: 3.4rem;
+    padding-left: 2.2rem;
+    padding-right: 2.2rem;
 }}
 
 h1, h2, h3, h4 {{
@@ -195,13 +200,13 @@ h1, h2, h3, h4 {{
 }}
 
 [data-testid="stSidebar"] {{
-    background: rgba(255,255,255,0.84);
+    background: rgba(255,255,255,0.82);
     border-right: 1px solid var(--border-soft);
     backdrop-filter: blur(18px);
 }}
 
 [data-testid="stSidebar"] .block-container {{
-    padding-top: 1rem;
+    padding-top: 1.1rem;
     padding-left: 1rem;
     padding-right: 1rem;
 }}
@@ -209,189 +214,223 @@ h1, h2, h3, h4 {{
 .app-stack {{
     display: flex;
     flex-direction: column;
-    gap: 1.4rem;
+    gap: 1.8rem;
 }}
 
 .hero {{
-    background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.94) 100%);
-    border: 1px solid rgba(226,232,240,0.88);
-    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(255,255,255,0.91) 100%);
+    border: 1px solid rgba(226, 232, 240, 0.9);
     box-shadow: var(--shadow-lg);
-    padding: 1.2rem 1.25rem 1.25rem 1.25rem;
+    border-radius: var(--radius-lg);
+    padding: 1.2rem 1.35rem 1.2rem 1.35rem;
 }}
 
 .hero-topline {{
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.36rem 0.72rem;
+    gap: 0.5rem;
+    padding: 0.38rem 0.7rem;
     border-radius: 999px;
-    background: rgba(37,99,235,0.08);
-    border: 1px solid rgba(37,99,235,0.12);
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.12);
     color: var(--primary-dark);
-    font-size: 0.72rem;
+    font-size: 0.76rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.85rem;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.9rem;
 }}
 
 .hero-grid {{
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.95fr);
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
     gap: 1rem;
+    align-items: stretch;
 }}
 
 .hero-title {{
-    margin: 0 0 0.45rem 0;
-    font-size: 2.15rem;
+    margin: 0 0 0.5rem 0;
+    font-size: 2.35rem;
     line-height: 1.02;
-    font-weight: 860;
+    font-weight: 850;
     color: var(--text);
 }}
 
 .hero-subtitle {{
     margin: 0;
-    max-width: 860px;
+    max-width: 880px;
+    font-size: 0.99rem;
+    line-height: 1.7;
     color: var(--text-soft);
-    font-size: 0.96rem;
-    line-height: 1.65;
 }}
 
 .hero-side {{
     background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
     border: 1px solid var(--border-soft);
     border-radius: 18px;
-    padding: 0.95rem 1rem;
+    padding: 1rem 1rem 0.95rem 1rem;
 }}
 
-.kicker {{
+.mini-kicker {{
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.3rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.35rem;
 }}
 
-.side-title {{
+.mini-title {{
     color: var(--text);
-    font-size: 1rem;
-    font-weight: 820;
-    line-height: 1.25;
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1.2;
     margin-bottom: 0.45rem;
 }}
 
-.side-copy {{
+.mini-copy {{
     color: var(--text-soft);
     font-size: 0.9rem;
-    line-height: 1.55;
+    line-height: 1.6;
 }}
 
-.decision-hero {{
+.decision-banner {{
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
     margin-top: 1rem;
-    padding: 1rem;
-    border-radius: 20px;
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
     border: 1px solid var(--border-soft);
-    background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
+    background: linear-gradient(180deg, rgba(248,250,252,0.95) 0%, rgba(255,255,255,0.95) 100%);
 }}
 
-.decision-hero.positive {{
-    border-color: rgba(15,159,110,0.22);
-    background: linear-gradient(180deg, rgba(240,253,248,1) 0%, rgba(255,255,255,1) 100%);
+.decision-dot {{
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    margin-top: 0.26rem;
+    flex: 0 0 12px;
 }}
 
-.decision-hero.negative {{
-    border-color: rgba(209,67,67,0.18);
-    background: linear-gradient(180deg, rgba(254,242,242,1) 0%, rgba(255,255,255,1) 100%);
+.state-positive .decision-dot {{
+    background: var(--success);
+    box-shadow: 0 0 0 6px rgba(15, 159, 110, 0.10);
 }}
 
-.decision-grid {{
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
-    gap: 0.85rem;
-    align-items: stretch;
+.state-negative .decision-dot {{
+    background: var(--danger);
+    box-shadow: 0 0 0 6px rgba(209, 67, 67, 0.10);
 }}
 
-.decision-main {{
-    padding-right: 0.35rem;
-}}
-
-.decision-label {{
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 0.35rem;
+.state-neutral .decision-dot {{
+    background: var(--warning);
+    box-shadow: 0 0 0 6px rgba(183, 121, 31, 0.10);
 }}
 
 .decision-title {{
     color: var(--text);
-    font-size: 1.35rem;
-    line-height: 1.12;
-    font-weight: 860;
-    margin-bottom: 0.42rem;
+    font-size: 0.95rem;
+    font-weight: 800;
+    margin-bottom: 0.22rem;
 }}
 
 .decision-copy {{
     color: var(--text-soft);
-    font-size: 0.93rem;
-    line-height: 1.62;
+    font-size: 0.92rem;
+    line-height: 1.6;
 }}
 
-.pill {{
-    display: inline-flex;
-    align-items: center;
-    padding: 0.22rem 0.5rem;
-    border-radius: 999px;
+/* IMPORTANTE: neutralizza i wrapper vuoti */
+.panel-content {{
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}}
+
+/* Header di sezione più elegante e leggero */
+.panel-head {{
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    padding-top: 0.1rem;
+}}
+
+.panel-kicker {{
+    color: var(--text-muted);
     font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.28rem;
+}}
+
+.panel-title {{
+    margin: 0 0 0.2rem 0;
+    color: var(--text);
+    font-size: 1.16rem;
+    line-height: 1.15;
     font-weight: 850;
-    margin-top: 0.7rem;
 }}
 
-.pill-positive {{
-    color: var(--success);
-    background: rgba(15,159,110,0.10);
-}}
-
-.pill-negative {{
-    color: var(--danger);
-    background: rgba(209,67,67,0.10);
-}}
-
-.pill-neutral {{
-    color: var(--warning);
-    background: rgba(183,121,31,0.10);
+.panel-note {{
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.92rem;
+    line-height: 1.6;
+    max-width: 900px;
 }}
 
 .metric-card {{
-    background: linear-gradient(180deg, #FFFFFF 0%, #FAFCFF 100%);
-    border: 1px solid rgba(226,232,240,0.9);
+    background: linear-gradient(180deg, #FFFFFF 0%, #F9FBFF 100%);
+    border: 1px solid rgba(226,232,240,0.85);
     border-radius: 18px;
-    padding: 1rem 1.05rem;
-    min-height: 148px;
-    box-shadow: var(--shadow_sm);
+    padding: 1rem 1.1rem;
+    box-shadow: 0 2px 6px rgba(15,23,42,0.04);
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        border-color 0.18s ease,
+        background 0.18s ease;
+}}
+
+.metric-card:hover {{
+    transform: translateY(-3px);
+    box-shadow: 0 10px 26px rgba(15,23,42,0.10);
+    border-color: rgba(148,163,184,0.45);
+    background: linear-gradient(180deg, #FFFFFF 0%, #F5F8FF 100%);
 }}
 
 .metric-card.emphasis {{
-    border-color: rgba(37,99,235,0.18);
-    box-shadow: 0 8px 20px rgba(37,99,235,0.08);
     background: linear-gradient(180deg, #F7FAFF 0%, #FFFFFF 100%);
+    border: 1px solid rgba(37,99,235,0.18);
+    box-shadow: 0 6px 18px rgba(37,99,235,0.08);
+}}
+
+.metric-card.emphasis:hover {{
+    box-shadow: 0 12px 28px rgba(37,99,235,0.16);
 }}
 
 .metric-label {{
     color: var(--text-muted);
-    font-size: 0.71rem;
+    font-size: 0.72rem;
     font-weight: 800;
-    text-transform: uppercase;
     letter-spacing: 0.08em;
-    margin-bottom: 0.45rem;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
 }}
 
 .metric-value {{
     color: var(--text);
-    font-size: 1.9rem;
+    font-size: 2rem;
     line-height: 1.02;
     font-weight: 860;
     letter-spacing: -0.05em;
@@ -401,8 +440,10 @@ h1, h2, h3, h4 {{
 .metric-help {{
     color: var(--text-soft);
     font-size: 0.86rem;
-    line-height: 1.55;
+    line-height: 1.6;
+    margin-top: auto;
 }}
+
 
 .metric-delta {{
     display: inline-flex;
@@ -412,7 +453,7 @@ h1, h2, h3, h4 {{
     padding: 0.22rem 0.5rem;
     font-size: 0.72rem;
     font-weight: 850;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.65rem;
 }}
 
 .delta-neutral {{
@@ -430,68 +471,46 @@ h1, h2, h3, h4 {{
     color: var(--danger);
 }}
 
-.panel-head {{
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}}
-
-.panel-kicker {{
-    color: var(--text-muted);
-    font-size: 0.7rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.28rem;
-}}
-
-.panel-title {{
-    margin: 0 0 0.18rem 0;
-    color: var(--text);
-    font-size: 1.12rem;
-    line-height: 1.14;
-    font-weight: 850;
-}}
-
-.panel-note {{
-    margin: 0;
+.metric-help {{
     color: var(--text-soft);
-    font-size: 0.9rem;
-    line-height: 1.55;
-    max-width: 880px;
+    font-size: 0.87rem;
+    line-height: 1.52;
+}}
+
+.metric-card pre,
+.metric-card code {{
+    display: none !important;
 }}
 
 .insight-card {{
-    background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
-    border: 1px solid var(--border-soft);
+    background: linear-gradient(180deg, rgba(248,250,255,1) 0%, rgba(255,255,255,1) 100%);
+    border: 1px solid rgba(37, 99, 235, 0.12);
     border-radius: 18px;
     padding: 1rem;
 }}
 
 .insight-title {{
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: 0.76rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.05em;
     margin-bottom: 0.42rem;
 }}
 
 .insight-value {{
     color: var(--text);
-    font-size: 1.9rem;
-    line-height: 1.02;
-    font-weight: 860;
+    font-size: 1.95rem;
+    line-height: 1.05;
+    font-weight: 850;
     letter-spacing: -0.04em;
-    margin-bottom: 0.38rem;
+    margin-bottom: 0.35rem;
 }}
 
 .insight-copy {{
     color: var(--text-soft);
-    font-size: 0.88rem;
-    line-height: 1.56;
+    font-size: 0.9rem;
+    line-height: 1.58;
 }}
 
 .legend-row {{
@@ -499,8 +518,8 @@ h1, h2, h3, h4 {{
     align-items: center;
     justify-content: space-between;
     gap: 0.8rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border_soft);
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border-soft);
 }}
 
 .legend-row:last-child {{
@@ -512,7 +531,7 @@ h1, h2, h3, h4 {{
     align-items: center;
     gap: 0.65rem;
     color: var(--text);
-    font-size: 0.9rem;
+    font-size: 0.92rem;
 }}
 
 .legend-dot {{
@@ -525,24 +544,21 @@ h1, h2, h3, h4 {{
 
 .legend-value {{
     color: var(--text);
-    font-size: 0.9rem;
+    font-size: 0.92rem;
     font-weight: 800;
-}}
-
-.section-shell {{
-    background: transparent;
+    text-align: right;
 }}
 
 .divider {{
     height: 1px;
     background: var(--border-soft);
-    margin: 0.95rem 0;
+    margin: 1rem 0;
 }}
 
 .subtle-note {{
     color: var(--text-muted);
-    font-size: 0.82rem;
-    line-height: 1.52;
+    font-size: 0.83rem;
+    line-height: 1.55;
 }}
 
 .sidebar-shell {{
@@ -553,7 +569,7 @@ h1, h2, h3, h4 {{
 
 .sidebar-kicker {{
     color: var(--text-muted);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -562,7 +578,7 @@ h1, h2, h3, h4 {{
 
 .sidebar-title {{
     color: var(--text);
-    font-size: 1.14rem;
+    font-size: 1.16rem;
     line-height: 1.16;
     font-weight: 850;
     margin-bottom: 0.4rem;
@@ -570,8 +586,12 @@ h1, h2, h3, h4 {{
 
 .sidebar-copy {{
     color: var(--text-soft);
-    font-size: 0.88rem;
-    line-height: 1.52;
+    font-size: 0.89rem;
+    line-height: 1.55;
+}}
+
+.sidebar-group {{
+    margin-top: 0.85rem;
 }}
 
 .sidebar-group-title {{
@@ -594,6 +614,10 @@ label[data-testid="stWidgetLabel"] p {{
     font-weight: 650;
 }}
 
+div[data-testid="stNumberInput"] {{
+    background: transparent !important;
+}}
+
 div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
     border-radius: 14px !important;
     border: 1px solid var(--border) !important;
@@ -606,15 +630,48 @@ div[data-testid="stNumberInput"] div[data-baseweb="input"] {{
 div[data-testid="stNumberInput"] input {{
     color: var(--text) !important;
     -webkit-text-fill-color: var(--text) !important;
+    opacity: 1 !important;
     background: #FFFFFF !important;
+    caret-color: var(--text) !important;
     font-weight: 600 !important;
+}}
+
+div[data-testid="stNumberInput"] input:focus {{
+    background: #FFFFFF !important;
+    outline: none !important;
+}}
+
+div[data-testid="stNumberInput"] input::placeholder {{
+    color: var(--text-muted) !important;
+    opacity: 1 !important;
 }}
 
 div[data-testid="stNumberInput"] button {{
     background: #F8FAFC !important;
     color: var(--text) !important;
     border-left: 1px solid var(--border-soft) !important;
+    border-radius: 0 !important;
     min-height: 46px !important;
+    box-shadow: none !important;
+}}
+
+div[data-testid="stNumberInput"] button:hover {{
+    background: #EEF2F7 !important;
+    color: var(--text) !important;
+}}
+
+input, textarea {{
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+}}
+
+.stSlider [data-baseweb="slider"] {{
+    padding-top: 0.3rem;
+    padding-bottom: 0.2rem;
+}}
+
+.stSlider [role="slider"] {{
+    box-shadow: 0 0 0 6px rgba(37,99,235,0.08);
 }}
 
 .stButton button,
@@ -635,17 +692,35 @@ div[data-testid="stDataFrame"] {{
     overflow: hidden;
 }}
 
+div[data-testid="stDataFrame"] * {{
+    color: #111827 !important;
+}}
+
+div[data-testid="stDataFrame"] [role="grid"] {{
+    background: #FFFFFF !important;
+}}
+
+div[data-testid="stDataFrame"] [role="columnheader"] {{
+    background: #F8FAFC !important;
+    color: #475467 !important;
+}}
+
+div[data-testid="stDataFrame"] [role="gridcell"] {{
+    background: #FFFFFF !important;
+    color: #111827 !important;
+}}
+
+.tight-gap {{
+    height: 0.25rem;
+}}
+
 @media (max-width: 1200px) {{
     .hero-grid {{
         grid-template-columns: 1fr;
     }}
 
-    .decision-grid {{
-        grid-template-columns: 1fr;
-    }}
-
     .hero-title {{
-        font-size: 1.95rem;
+        font-size: 2rem;
     }}
 }}
 </style>
@@ -653,8 +728,6 @@ div[data-testid="stDataFrame"] {{
         ).strip(),
         unsafe_allow_html=True,
     )
-
-
 # ======================================================
 # DOMAIN LOGIC
 # ======================================================
@@ -692,7 +765,11 @@ def calculate_plan(
     )
 
 
-def contributed_until_exit(initial_capital: float, monthly_contribution: float, exit_year: int) -> float:
+def contributed_until_exit(
+    initial_capital: float,
+    monthly_contribution: float,
+    exit_year: int,
+) -> float:
     return float(initial_capital + monthly_contribution * 12 * exit_year)
 
 
@@ -702,9 +779,9 @@ def alternative_final_value(
     exit_penalty_eur: float,
     exit_extra_cost: float,
     alternative_return: float,
-) -> tuple[float, float]:
+) -> float:
     net_capital = max(exit_value_gross - exit_penalty_eur - exit_extra_cost, 0.0)
-    return net_capital, net_capital * ((1 + alternative_return) ** remaining_years)
+    return net_capital * ((1 + alternative_return) ** remaining_years)
 
 
 @st.cache_data(show_spinner=False)
@@ -728,7 +805,8 @@ def calculate_exit_metrics(
         exit_year=exit_year,
     )
     exit_penalty_eur = contributed * exit_penalty_pct
-    available_net_capital, final_value_alternative = alternative_final_value(
+
+    final_value_alternative = alternative_final_value(
         exit_value_gross=exit_value_gross,
         remaining_years=remaining_years,
         exit_penalty_eur=exit_penalty_eur,
@@ -737,18 +815,55 @@ def calculate_exit_metrics(
     )
 
     opportunity_cost_abs = final_value_stay - final_value_alternative
-    opportunity_cost_pct = 100 * opportunity_cost_abs / final_value_stay if final_value_stay > 0 else 0.0
+    opportunity_cost_pct = (
+        100 * opportunity_cost_abs / final_value_stay if final_value_stay > 0 else 0.0
+    )
 
     return ExitMetrics(
         final_value_stay=round(final_value_stay, 2),
         exit_value_gross=round(exit_value_gross, 2),
         contributed_until_exit=round(contributed, 2),
         exit_penalty_eur=round(exit_penalty_eur, 2),
-        available_net_capital=round(available_net_capital, 2),
         final_value_alternative=round(final_value_alternative, 2),
         opportunity_cost_abs=round(opportunity_cost_abs, 2),
         opportunity_cost_pct=round(opportunity_cost_pct, 2),
         remaining_years=remaining_years,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def calculate_compounding_metrics(
+    base_df: pd.DataFrame,
+    initial_capital: float,
+    monthly_contribution: float,
+    exit_year: int,
+    exit_penalty_pct: float,
+    exit_extra_cost: float,
+) -> CompoundingMetrics:
+    final_value_stay = float(base_df.iloc[-1]["Total Value"])
+    exit_value_gross = float(base_df.iloc[exit_year]["Total Value"])
+
+    contributed = contributed_until_exit(
+        initial_capital=initial_capital,
+        monthly_contribution=monthly_contribution,
+        exit_year=exit_year,
+    )
+    exit_penalty_eur = contributed * exit_penalty_pct
+    available_net_capital = max(exit_value_gross - exit_penalty_eur - exit_extra_cost, 0.0)
+
+    lost_compounding_abs = final_value_stay - available_net_capital
+    lost_compounding_pct = (
+        100 * lost_compounding_abs / final_value_stay if final_value_stay > 0 else 0.0
+    )
+
+    return CompoundingMetrics(
+        exit_value_gross=round(exit_value_gross, 2),
+        contributed_until_exit=round(contributed, 2),
+        exit_penalty_eur=round(exit_penalty_eur, 2),
+        available_net_capital=round(available_net_capital, 2),
+        final_value_stay=round(final_value_stay, 2),
+        lost_compounding_abs=round(lost_compounding_abs, 2),
+        lost_compounding_pct=round(lost_compounding_pct, 2),
     )
 
 
@@ -768,7 +883,12 @@ def simulate_probability_stay_better(
 ) -> MonteCarloMetrics:
     rng = np.random.default_rng(seed)
 
-    volatility_map = {"Bassa": 0.08, "Media": 0.12, "Alta": 0.18}
+    volatility_map = {
+        "Bassa": 0.08,
+        "Media": 0.12,
+        "Alta": 0.18,
+    }
+
     annual_volatility = volatility_map.get(uncertainty_level, 0.12)
     alternative_annual_volatility = 0.02
 
@@ -778,10 +898,15 @@ def simulate_probability_stay_better(
 
     mu_main = expected_return / 12
     sigma_main = annual_volatility / np.sqrt(12)
+
     mu_alt = alternative_return / 12
     sigma_alt = alternative_annual_volatility / np.sqrt(12)
 
-    contributed = contributed_until_exit(initial_capital, monthly_contribution, exit_year)
+    contributed = contributed_until_exit(
+        initial_capital=initial_capital,
+        monthly_contribution=monthly_contribution,
+        exit_year=exit_year,
+    )
     exit_penalty_eur = contributed * exit_penalty_pct
 
     main_returns = rng.normal(mu_main, sigma_main, size=(n_simulations, total_months))
@@ -794,41 +919,28 @@ def simulate_probability_stay_better(
     for month in range(exit_months):
         exit_path = (exit_path + monthly_contribution) * (1.0 + main_returns[:, month])
 
-    exit_net_capital = np.maximum(exit_path - exit_penalty_eur - exit_extra_cost, 0.0)
+    exit_net_capital = np.maximum(
+        exit_path - exit_penalty_eur - exit_extra_cost,
+        0.0,
+    )
 
     if remaining_months > 0:
         alt_returns = rng.normal(mu_alt, sigma_alt, size=(n_simulations, remaining_months))
         alt_path = exit_net_capital.copy()
         for month in range(remaining_months):
-            alt_path *= 1.0 + alt_returns[:, month]
+            alt_path *= (1.0 + alt_returns[:, month])
     else:
         alt_path = exit_net_capital
 
     probability = float(np.mean(stay_path > alt_path)) * 100
-    shortfall = stay_path - alt_path
-
-    distribution_df = pd.DataFrame(
-        {
-            "stay": stay_path,
-            "exit": alt_path,
-            "delta": shortfall,
-        }
-    )
+    expected_cost = float(np.mean(stay_path - alt_path))
 
     return MonteCarloMetrics(
         probability_stay_better=round(probability, 1),
-        expected_shortfall_exit=round(float(np.mean(shortfall)), 2),
+        expected_cost_mc=round(expected_cost, 2),
         stay_mean=round(float(np.mean(stay_path)), 2),
         exit_mean=round(float(np.mean(alt_path)), 2),
         used_volatility_pct=round(annual_volatility * 100, 1),
-        stay_p10=round(float(np.percentile(stay_path, 10)), 2),
-        stay_p50=round(float(np.percentile(stay_path, 50)), 2),
-        stay_p90=round(float(np.percentile(stay_path, 90)), 2),
-        exit_p10=round(float(np.percentile(alt_path, 10)), 2),
-        exit_p50=round(float(np.percentile(alt_path, 50)), 2),
-        exit_p90=round(float(np.percentile(alt_path, 90)), 2),
-        break_even_probability=round(float(np.mean(shortfall <= 0)) * 100, 1),
-        distribution_df=distribution_df,
     )
 
 
@@ -863,7 +975,11 @@ def build_compounding_table(
     net_capital = np.maximum(exit_values - penalties - exit_extra_cost, 0.0)
 
     lost_compounding = final_value_stay - net_capital
-    lost_compounding_pct = np.where(final_value_stay > 0, 100 * lost_compounding / final_value_stay, 0.0)
+    lost_compounding_pct = np.where(
+        final_value_stay > 0,
+        100 * lost_compounding / final_value_stay,
+        0.0,
+    )
 
     return pd.DataFrame(
         {
@@ -878,28 +994,6 @@ def build_compounding_table(
     )
 
 
-def build_scenario_paths(plan_df: pd.DataFrame, exit_metrics: ExitMetrics, alternative_return: float, exit_year: int) -> pd.DataFrame:
-    years = plan_df["Year"].tolist()
-    stay_values = plan_df["Total Value"].tolist()
-
-    alt_values = []
-    for year in years:
-        if year < exit_year:
-            alt_values.append(np.nan)
-        elif year == exit_year:
-            alt_values.append(exit_metrics.available_net_capital)
-        else:
-            alt_values.append(exit_metrics.available_net_capital * ((1 + alternative_return) ** (year - exit_year)))
-
-    rows = []
-    for year, stay, alt_value in zip(years, stay_values, alt_values):
-        rows.append({"Year": year, "Scenario": "Restare investito", "Value": stay})
-        if not np.isnan(alt_value):
-            rows.append({"Year": year, "Scenario": "Uscire e reinvestire", "Value": alt_value})
-
-    return pd.DataFrame(rows)
-
-
 # ======================================================
 # CHARTS
 # ======================================================
@@ -907,7 +1001,6 @@ def build_scenario_paths(plan_df: pd.DataFrame, exit_metrics: ExitMetrics, alter
 def chart_theme() -> dict:
     return {
         "config": {
-            "background": "#FFFFFF",
             "axis": {
                 "labelColor": THEME["text_muted"],
                 "titleColor": THEME["text_soft"],
@@ -922,134 +1015,184 @@ def chart_theme() -> dict:
                 "labelColor": THEME["text_soft"],
                 "titleColor": THEME["text"],
             },
-            "view": {"stroke": None, "fill": "#FFFFFF"},
+            "view": {"stroke": None},
         }
     }
 
 
-def finalize_chart(chart: alt.Chart, height: int) -> alt.Chart:
-    return (
-        chart.properties(height=height, background="#FFFFFF")
-        .configure(**chart_theme()["config"])
-        .configure_view(stroke=None, fill="#FFFFFF")
+def create_growth_chart(df: pd.DataFrame) -> alt.Chart:
+    chart_df = df.copy()
+    chart_df["Cumulative Gain"] = chart_df["Total Value"] - chart_df["Total Contributed"]
+
+    tooltip = [
+        alt.Tooltip("Year:Q", title="Anno"),
+        alt.Tooltip("Total Value:Q", title="Valore totale", format=",.0f"),
+        alt.Tooltip("Total Contributed:Q", title="Capitale versato", format=",.0f"),
+        alt.Tooltip("Cumulative Gain:Q", title="Crescita cumulata", format=",.0f"),
+    ]
+
+    base = alt.Chart(chart_df).encode(
+        x=alt.X("Year:Q", title=None, axis=alt.Axis(grid=False, tickCount=min(10, len(chart_df))))
     )
 
-
-def create_decision_paths_chart(plan_df: pd.DataFrame, exit_metrics: ExitMetrics, alternative_return: float, exit_year: int) -> alt.Chart:
-    chart_df = build_scenario_paths(plan_df, exit_metrics, alternative_return, exit_year)
-
-    color_scale = alt.Scale(
-        domain=["Restare investito", "Uscire e reinvestire"],
-        range=[THEME["primary"], THEME["secondary"]],
+    area = base.mark_area(
+        line={"color": THEME["chart_main"], "strokeWidth": 2.5},
+        opacity=0.22,
+        color=THEME["chart_main"],
+    ).encode(
+        y=alt.Y("Total Value:Q", title=None, axis=alt.Axis(format="~s")),
+        tooltip=tooltip,
     )
 
-    line = alt.Chart(chart_df).mark_line(point=True, strokeWidth=3).encode(
-        x=alt.X("Year:Q", title=None, axis=alt.Axis(grid=False, tickCount=min(10, len(plan_df)))),
-        y=alt.Y("Value:Q", title=None, axis=alt.Axis(format="~s")),
-        color=alt.Color("Scenario:N", scale=color_scale, legend=alt.Legend(title=None, orient="top")),
-        tooltip=[
-            alt.Tooltip("Scenario:N", title="Scenario"),
-            alt.Tooltip("Year:Q", title="Anno"),
-            alt.Tooltip("Value:Q", title="Valore", format=",.0f"),
-        ],
-    )
-
-    contrib = alt.Chart(plan_df).mark_line(
-        color=THEME["text_muted"],
+    contribution_line = base.mark_line(
+        color=THEME["chart_neutral"],
+        strokeWidth=2,
         strokeDash=[5, 5],
-        strokeWidth=1.8,
-        opacity=0.9,
+        interpolate="monotone"
+    ).encode(
+        y="Total Contributed:Q"
+    )
+
+    points = base.mark_circle(
+        size=60,
+        color=THEME["chart_main"],
+        opacity=0.95,
+    ).encode(
+        y="Total Value:Q",
+        tooltip=tooltip,
+    )
+
+    last_point = alt.Chart(chart_df.tail(1)).mark_circle(
+        size=130,
+        color=THEME["chart_main"],
     ).encode(
         x="Year:Q",
-        y=alt.Y("Total Contributed:Q"),
-        tooltip=[
-            alt.Tooltip("Year:Q", title="Anno"),
-            alt.Tooltip("Total Contributed:Q", title="Capitale versato", format=",.0f"),
-        ],
+        y="Total Value:Q",
+        tooltip=tooltip,
     )
 
-    exit_rule = alt.Chart(pd.DataFrame({"Exit Year": [exit_year]})).mark_rule(
-        color=THEME["danger"],
-        strokeDash=[4, 4],
-        strokeWidth=1.6,
-    ).encode(x="Exit Year:Q")
-
-    exit_label = alt.Chart(pd.DataFrame({"Exit Year": [exit_year], "Label": [f"Uscita anno {exit_year}"]})).mark_text(
-        align="left",
-        dx=6,
-        dy=-8,
-        color=THEME["danger"],
-        fontSize=11,
-        fontWeight="bold",
-    ).encode(x="Exit Year:Q", y=alt.value(16), text="Label:N")
-
-    return finalize_chart(contrib + line + exit_rule + exit_label, 360)
-
-
-def create_distribution_chart(mc_metrics: MonteCarloMetrics) -> alt.Chart:
-    dist_df = mc_metrics.distribution_df.copy()
-    dist_df = pd.concat(
-        [
-            dist_df[["stay"]].rename(columns={"stay": "Outcome"}).assign(Scenario="Restare investito"),
-            dist_df[["exit"]].rename(columns={"exit": "Outcome"}).assign(Scenario="Uscire e reinvestire"),
-        ],
-        ignore_index=True,
+    return (area + contribution_line + points + last_point).properties(height=340).configure(
+        **chart_theme()["config"]
     )
 
-    color_scale = alt.Scale(
-        domain=["Restare investito", "Uscire e reinvestire"],
-        range=[THEME["primary"], THEME["secondary"]],
+
+def create_scenario_comparison_chart(stay_value: float, alternative_value: float) -> alt.Chart:
+    comp_df = pd.DataFrame(
+        {
+            "Scenario": ["Restare investito", "Uscire e reinvestire"],
+            "Value": [stay_value, alternative_value],
+            "Color": [THEME["chart_main"], THEME["chart_alt"]],
+        }
     )
 
-    chart = alt.Chart(dist_df).transform_bin(
-        as_=["bin_start", "bin_end"],
-        field="Outcome",
-        bin=alt.Bin(maxbins=30),
-    ).mark_bar(opacity=0.55).encode(
-        x=alt.X("bin_start:Q", title="Valore finale", axis=alt.Axis(format="~s")),
-        x2="bin_end:Q",
-        y=alt.Y("count():Q", title="Frequenza"),
-        color=alt.Color("Scenario:N", scale=color_scale, legend=alt.Legend(title=None, orient="top")),
+    bars = alt.Chart(comp_df).mark_bar(
+        cornerRadiusTopLeft=10,
+        cornerRadiusTopRight=10,
+        width=92,
+    ).encode(
+        x=alt.X("Scenario:N", title=None, axis=alt.Axis(labelAngle=0)),
+        y=alt.Y("Value:Q", title=None, axis=alt.Axis(format="~s")),
+        color=alt.Color("Color:N", scale=None, legend=None),
         tooltip=[
             alt.Tooltip("Scenario:N", title="Scenario"),
-            alt.Tooltip("count():Q", title="Frequenza"),
+            alt.Tooltip("Value:Q", title="Valore finale", format=",.0f"),
         ],
     )
 
-    return finalize_chart(chart, 280)
+    labels = alt.Chart(comp_df).mark_text(
+        dy=-12,
+        fontSize=12,
+        fontWeight="bold",
+        color=THEME["text"],
+    ).encode(
+        x="Scenario:N",
+        y="Value:Q",
+        text=alt.Text("Value:Q", format=",.0f"),
+    )
+
+    return (bars + labels).properties(height=310).configure(**chart_theme()["config"])
 
 
-def create_exit_timing_chart(df_compounding: pd.DataFrame, selected_exit_year: int) -> alt.Chart:
+def create_lost_compounding_chart(df_compounding: pd.DataFrame, selected_exit_year: int) -> alt.Chart:
     chart_df = df_compounding.copy()
-    chart_df["Selection"] = np.where(chart_df["Exit Year"] == selected_exit_year, "Selezionato", "Altri")
-
-    bars = alt.Chart(chart_df).mark_bar(cornerRadiusTopLeft=8, cornerRadiusTopRight=8).encode(
-        x=alt.X("Exit Year:O", title="Anno di uscita", axis=alt.Axis(labelAngle=0)),
-        y=alt.Y("Lost Compounding EUR:Q", title="Valore futuro sacrificato", axis=alt.Axis(format="~s")),
-        color=alt.condition(
-            alt.datum.Selection == "Selezionato",
-            alt.value(THEME["primary_dark"]),
-            alt.value(THEME["primary_soft"]),
-        ),
-        tooltip=[
-            alt.Tooltip("Exit Year:Q", title="Anno uscita"),
-            alt.Tooltip("Available Net Capital:Q", title="Capitale netto disponibile", format=",.0f"),
-            alt.Tooltip("Lost Compounding EUR:Q", title="Valore futuro sacrificato", format=",.0f"),
-            alt.Tooltip("Lost Compounding %:Q", title="% del valore finale", format=".2f"),
-        ],
+    chart_df["Selection"] = np.where(
+        chart_df["Exit Year"] == selected_exit_year,
+        "Selected",
+        "Other",
     )
 
-    trend = alt.Chart(chart_df).mark_line(color=THEME["primary"], strokeWidth=2.2).encode(
+    tooltip = [
+        alt.Tooltip("Exit Year:Q", title="Anno uscita"),
+        alt.Tooltip("Available Net Capital:Q", title="Capitale netto disponibile", format=",.0f"),
+        alt.Tooltip("Lost Compounding EUR:Q", title="Compounding perso", format=",.0f"),
+        alt.Tooltip("Lost Compounding %:Q", title="% valore finale", format=".2f"),
+    ]
+
+    base = alt.Chart(chart_df).encode(
+        x=alt.X("Exit Year:O", title="Anno di uscita", axis=alt.Axis(labelAngle=0))
+    )
+
+    bars = base.mark_bar(
+        cornerRadiusTopLeft=8,
+        cornerRadiusTopRight=8,
+        opacity=0.9,
+    ).encode(
+        y=alt.Y("Lost Compounding EUR:Q", title="Crescita composta persa", axis=alt.Axis(format="~s")),
+        color=alt.condition(
+            alt.datum.Selection == "Selected",
+            alt.value(THEME["primary_dark"]),
+            alt.value(THEME["chart_main_soft"]),
+        ),
+        tooltip=tooltip,
+    )
+
+    trend_line = base.mark_line(
+        color=THEME["chart_main"],
+        strokeWidth=2.2,
+    ).encode(
+        y="Lost Compounding EUR:Q"
+    )
+
+    selected_point = alt.Chart(
+        chart_df[chart_df["Exit Year"] == selected_exit_year]
+    ).mark_circle(
+        size=170,
+        color=THEME["danger"],
+    ).encode(
         x="Exit Year:O",
         y="Lost Compounding EUR:Q",
+        tooltip=tooltip,
     )
 
-    return finalize_chart(bars + trend, 300)
+    return (bars + trend_line + selected_point).properties(height=320).configure(
+        **chart_theme()["config"]
+    )
 
 
 # ======================================================
 # UI HELPERS
 # ======================================================
+
+def open_panel() -> None:
+    st.markdown('<div class="panel-shell">', unsafe_allow_html=True)
+
+def close_panel() -> None:
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def render_panel_header(kicker: str, title: str, note: str) -> None:
+    html = dedent(
+        f"""
+        <div class="panel-head">
+            <div>
+                <div class="panel-kicker">{kicker}</div>
+                <div class="panel-title">{title}</div>
+                <p class="panel-note">{note}</p>
+            </div>
+        </div>
+        """
+    ).strip()
+    st.markdown(html, unsafe_allow_html=True)
+
 
 def section_header(kicker: str, title: str, note: str) -> None:
     html = dedent(
@@ -1075,7 +1218,10 @@ def render_metric_card(
     emphasis: bool = False,
 ) -> None:
     emphasis_class = " emphasis" if emphasis else ""
-    delta_html = f'<div class="metric-delta {delta_css}">{delta_text}</div>' if delta_text else ""
+
+    delta_html = ""
+    if delta_text is not None:
+        delta_html = f'<div class="metric-delta {delta_css}">{delta_text}</div>'
 
     html = (
         f'<div class="metric-card{emphasis_class}">'
@@ -1085,6 +1231,7 @@ def render_metric_card(
         f'<div class="metric-help">{help_text}</div>'
         f'</div>'
     )
+
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -1116,20 +1263,9 @@ def render_legend_item(label: str, value: str, color: str) -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
-def render_hero(inputs: SimulationInputs, exit_metrics: ExitMetrics, mc_metrics: MonteCarloMetrics) -> None:
-    state = recommendation_state(mc_metrics.probability_stay_better)
-    if state == "positive":
-        headline = "Restare investito appare economicamente superiore"
-        pill_class = "pill pill-positive"
-        pill_text = "Scenario preferito"
-    elif state == "negative":
-        headline = "L'uscita anticipata risulta competitiva"
-        pill_class = "pill pill-negative"
-        pill_text = "Scenario alternativo forte"
-    else:
-        headline = "La decisione è meno netta e richiede cautela"
-        pill_class = "pill pill-neutral"
-        pill_text = "Scenario borderline"
+def render_hero(compounding: CompoundingMetrics, inputs: SimulationInputs) -> None:
+    decision_gap = compounding.final_value_stay - compounding.available_net_capital
+    state = outcome_class(decision_gap)
 
     html = dedent(
         f"""
@@ -1139,45 +1275,27 @@ def render_hero(inputs: SimulationInputs, exit_metrics: ExitMetrics, mc_metrics:
                 <div>
                     <div class="hero-title">Simulatore investimento e uscita anticipata</div>
                     <p class="hero-subtitle">
-                        Dashboard decisionale focalizzata sul trade-off tra liquidità immediata e valore futuro.
-                        La vista iniziale mette al centro il delta economico tra restare investito e uscire prima.
+                        Una dashboard decisionale progettata per misurare il costo economico di un’uscita anticipata.
+                        Il focus non è solo la penale. È soprattutto il valore futuro che smette di comporsi nel tempo.
                     </p>
                 </div>
                 <div class="hero-side">
-                    <div class="kicker">Scenario attivo</div>
-                    <div class="side-title">Uscita al {inputs.exit_year}° anno su un piano di {inputs.duration_years} anni</div>
-                    <div class="side-copy">
-                        Capitale netto disponibile in uscita <strong>{format_eur(exit_metrics.available_net_capital)}</strong>.
-                        Valore atteso a scadenza restando investito <strong>{format_eur(exit_metrics.final_value_stay)}</strong>.
+                    <div class="mini-kicker">Scenario attivo</div>
+                    <div class="mini-title">Uscita al {inputs.exit_year}° anno su un piano di {inputs.duration_years} anni</div>
+                    <div class="mini-copy">
+                        Capitale netto disponibile in uscita <strong>{format_eur(compounding.available_net_capital)}</strong>.
+                        Valore finale stimato restando investito <strong>{format_eur(compounding.final_value_stay)}</strong>.
                     </div>
                 </div>
             </div>
-            <div class="decision-hero {state}">
-                <div class="decision-grid">
-                    <div class="decision-main">
-                        <div class="decision-label">Raccomandazione di scenario</div>
-                        <div class="decision-title">{headline}</div>
-                        <div class="decision-copy">
-                            Uscire al <strong>{inputs.exit_year}° anno</strong> riduce il valore atteso finale di
-                            <strong>{format_eur(exit_metrics.opportunity_cost_abs)}</strong>, pari al
-                            <strong>{format_pct(exit_metrics.opportunity_cost_pct)}</strong> dello scenario di permanenza.
-                        </div>
-                        <div class="{pill_class}">{pill_text}</div>
-                    </div>
-                    <div class="metric-card emphasis">
-                        <div class="metric-label">Valore netto se esci</div>
-                        <div class="metric-value">{format_eur(exit_metrics.available_net_capital)}</div>
-                        <div class="metric-help">Capitale immediatamente disponibile dopo penale e costi.</div>
-                    </div>
-                    <div class="metric-card emphasis">
-                        <div class="metric-label">Valore atteso se resti</div>
-                        <div class="metric-value">{format_eur(exit_metrics.final_value_stay)}</div>
-                        <div class="metric-help">Stima del valore a scadenza mantenendo il piano attivo.</div>
-                    </div>
-                    <div class="metric-card emphasis">
-                        <div class="metric-label">Confidenza statistica</div>
-                        <div class="metric-value">{format_pct(mc_metrics.probability_stay_better)}</div>
-                        <div class="metric-help">Quota simulazioni Monte Carlo in cui restare investito batte l'uscita.</div>
+            <div class="decision-banner {state}">
+                <div class="decision-dot"></div>
+                <div>
+                    <div class="decision-title">Messaggio chiave per la decisione</div>
+                    <div class="decision-copy">
+                        Uscendo al <strong>{inputs.exit_year}° anno</strong> rinunci a circa
+                        <strong>{format_eur(compounding.lost_compounding_abs)}</strong> di crescita futura,
+                        pari al <strong>{format_pct(compounding.lost_compounding_pct)}</strong> del valore finale stimato.
                     </div>
                 </div>
             </div>
@@ -1196,7 +1314,8 @@ def render_sidebar() -> SimulationInputs:
                     <div class="sidebar-kicker">Scenario setup</div>
                     <div class="sidebar-title">Configura la simulazione</div>
                     <div class="sidebar-copy">
-                        Organizza gli input in tre blocchi mentali. Piano attuale, uscita anticipata e ipotesi di rischio.
+                        Imposta il piano, lo scenario di uscita e il livello di incertezza.
+                        L’interfaccia mette al centro il trade-off tra liquidità immediata e valore futuro.
                     </div>
                 </div>
                 """
@@ -1205,44 +1324,93 @@ def render_sidebar() -> SimulationInputs:
         )
 
         with st.form("simulation_form", clear_on_submit=False):
-            st.markdown('<div class="sidebar-group-title">Piano attuale</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sidebar-group-title">Piano di investimento</div>', unsafe_allow_html=True)
             st.markdown(
-                '<div class="sidebar-group-note">Capitale iniziale, contributi, rendimento atteso e orizzonte del piano.</div>',
+                '<div class="sidebar-group-note">Definisci capitale iniziale, contributo mensile, rendimento atteso e durata del piano.</div>',
                 unsafe_allow_html=True,
             )
-            initial_capital = st.number_input("Investimento iniziale (EUR)", min_value=0.0, value=20000.0, step=1000.0)
-            monthly_contribution = st.number_input("Versamento mensile (EUR)", min_value=0.0, value=500.0, step=50.0)
-            annual_return_pct = st.slider("Rendimento annuo atteso (%)", min_value=0, max_value=15, value=7)
-            duration_years = st.slider("Durata del piano (anni)", min_value=1, max_value=30, value=10)
+
+            initial_capital = st.number_input(
+                "Investimento iniziale (EUR)",
+                min_value=0.0,
+                value=20000.0,
+                step=1000.0,
+            )
+            monthly_contribution = st.number_input(
+                "Versamento mensile (EUR)",
+                min_value=0.0,
+                value=500.0,
+                step=50.0,
+            )
+            annual_return_pct = st.slider(
+                "Rendimento annuo atteso (%)",
+                min_value=0,
+                max_value=15,
+                value=7,
+            )
+            duration_years = st.slider(
+                "Durata del piano (anni)",
+                min_value=1,
+                max_value=30,
+                value=10,
+            )
 
             st.markdown('<div class="sidebar-group-title">Scenario di uscita</div>', unsafe_allow_html=True)
             st.markdown(
-                '<div class="sidebar-group-note">Definisci timing di uscita, penale e costi extra.</div>',
+                '<div class="sidebar-group-note">Simula uscita anticipata, penale applicata e nuovo reinvestimento.</div>',
                 unsafe_allow_html=True,
             )
+
             max_exit_year = max(0, duration_years - 1)
+
             exit_year = st.slider(
                 "Anno di uscita",
                 min_value=0,
                 max_value=max_exit_year,
                 value=min(5, max_exit_year),
-                help="L'uscita anticipata è disponibile solo prima della scadenza finale.",
+                help="L’uscita anticipata è disponibile solo prima della scadenza finale.",
             )
-            exit_penalty_pct = st.slider("Penale di uscita (% su capitale versato)", min_value=0.0, max_value=20.0, value=2.0, step=0.5)
-            exit_extra_cost = st.number_input("Altri costi di uscita (EUR)", min_value=0.0, value=0.0, step=100.0)
+            exit_penalty_pct = st.slider(
+                "Penale di uscita (% su capitale versato)",
+                min_value=0.0,
+                max_value=20.0,
+                value=2.0,
+                step=0.5,
+            )
+            exit_extra_cost = st.number_input(
+                "Altri costi di uscita (EUR)",
+                min_value=0.0,
+                value=0.0,
+                step=100.0,
+            )
+            alternative_return_pct = st.slider(
+                "Rendimento annuo nuovo investimento (%)",
+                min_value=0.0,
+                max_value=10.0,
+                value=2.0,
+                step=0.5,
+            )
 
-            st.markdown('<div class="sidebar-group-title">Scenario di reinvestimento e rischio</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sidebar-group-title">Robustezza della stima</div>', unsafe_allow_html=True)
             st.markdown(
-                '<div class="sidebar-group-note">Nuovo rendimento ipotizzato e robustezza della simulazione Monte Carlo.</div>',
+                '<div class="sidebar-group-note">Usa Monte Carlo per stimare quanto spesso restare investito risulta migliore dello scenario di uscita.</div>',
                 unsafe_allow_html=True,
             )
-            alternative_return_pct = st.slider("Rendimento annuo nuovo investimento (%)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
-            uncertainty_level = st.select_slider("Oscillazione dei rendimenti", options=["Bassa", "Media", "Alta"], value="Media")
-            n_simulations = st.select_slider("Numero simulazioni", options=[1000, 3000, 5000, 10000], value=3000)
+
+            uncertainty_level = st.select_slider(
+                "Oscillazione dei rendimenti",
+                options=["Bassa", "Media", "Alta"],
+                value="Media",
+            )
+            n_simulations = st.select_slider(
+                "Numero simulazioni",
+                options=[1000, 3000, 5000, 10000],
+                value=3000,
+            )
 
             st.form_submit_button("Aggiorna dashboard", use_container_width=True)
 
-        st.caption("Le metriche vengono aggiornate in base ai parametri attualmente selezionati.")
+        st.caption("I risultati vengono aggiornati utilizzando i parametri attualmente selezionati.")
 
     return SimulationInputs(
         initial_capital=initial_capital,
@@ -1288,6 +1456,15 @@ exit_metrics = calculate_exit_metrics(
     alternative_return=inputs.alternative_return,
 )
 
+compounding_metrics = calculate_compounding_metrics(
+    base_df=plan_df,
+    initial_capital=inputs.initial_capital,
+    monthly_contribution=inputs.monthly_contribution,
+    exit_year=inputs.exit_year,
+    exit_penalty_pct=inputs.exit_penalty_pct,
+    exit_extra_cost=inputs.exit_extra_cost,
+)
+
 mc_metrics = simulate_probability_stay_better(
     initial_capital=inputs.initial_capital,
     monthly_contribution=inputs.monthly_contribution,
@@ -1313,151 +1490,213 @@ compounding_table = build_compounding_table(
 
 st.markdown('<div class="app-stack">', unsafe_allow_html=True)
 
-render_hero(inputs, exit_metrics, mc_metrics)
+render_hero(compounding_metrics, inputs)
 
+open_panel()
 section_header(
-    "Decision summary",
-    "KPI decisionali primari",
-    "I primi numeri devono guidare la scelta. Liquidità disponibile, valore atteso, costo opportunità e robustezza statistica.",
+    "Executive summary",
+    "KPI principali",
+    "I numeri più importanti per valutare valore atteso, costo opportunità e robustezza della decisione.",
 )
 
 k1, k2, k3, k4 = st.columns(4)
 with k1:
     render_metric_card(
-        label="Valore netto se esci ora",
-        value=format_eur(exit_metrics.available_net_capital),
-        help_text="Capitale disponibile al momento dell'uscita, al netto di penale e costi extra.",
-        delta_text=f"anno {inputs.exit_year}",
-        delta_css="delta-neutral",
-        emphasis=True,
-    )
-with k2:
-    render_metric_card(
-        label="Valore atteso a scadenza",
-        value=format_eur(exit_metrics.final_value_stay),
-        help_text="Valore finale atteso mantenendo il piano fino alla durata selezionata.",
+        label="Valore finale stimato",
+        value=format_eur(final_value),
+        help_text="Capitale atteso mantenendo il piano fino alla scadenza selezionata.",
         delta_text=format_pct_signed(roi_pct),
         delta_css=delta_class(roi_pct, positive_is_good=True),
         emphasis=True,
     )
+with k2:
+    render_metric_card(
+        label="Totale investito",
+        value=format_eur(total_contributed),
+        help_text="Somma di investimento iniziale e versamenti lungo tutta la durata del piano.",
+        delta_text=f"{inputs.duration_years} anni",
+        delta_css="delta-neutral",
+    )
 with k3:
     render_metric_card(
-        label="Costo opportunità dell'uscita",
-        value=format_eur(exit_metrics.opportunity_cost_abs),
-        help_text="Valore finale che rinunci a catturare scegliendo uscita e reinvestimento alternativo.",
-        delta_text=format_pct(exit_metrics.opportunity_cost_pct),
+        label="Compounding perso",
+        value=format_eur(compounding_metrics.lost_compounding_abs),
+        help_text="Valore futuro che non catturi se interrompi il piano nel punto selezionato.",
+        delta_text=format_pct(compounding_metrics.lost_compounding_pct),
         delta_css="delta-negative",
         emphasis=True,
     )
 with k4:
     render_metric_card(
-        label="Confidenza dello scenario stay",
+        label="Probabilità che restare sia meglio",
         value=format_pct(mc_metrics.probability_stay_better),
-        help_text="Quota simulazioni in cui restare investito batte lo scenario di uscita anticipata.",
+        help_text="Frequenza con cui lo scenario stay supera lo scenario exit nella simulazione Monte Carlo.",
         delta_text=f"vol. {mc_metrics.used_volatility_pct}%",
         delta_css="delta-neutral",
     )
+close_panel()
 
-row_a, row_b = st.columns([1.35, 1], gap="large")
+left_col, right_col = st.columns([1.35, 1], gap="large")
 
-with row_a:
+with left_col:
+    open_panel()
     section_header(
-        "Scenario path",
-        "Confronto dinamico dei due percorsi",
-        "La linea blu mostra il piano mantenuto fino a scadenza. La linea viola mostra il valore disponibile dopo l'uscita e la sua evoluzione nel nuovo scenario di reinvestimento.",
-    )
-    render_legend_item("Restare investito", format_eur(exit_metrics.final_value_stay), THEME["primary"])
-    render_legend_item("Uscire e reinvestire", format_eur(exit_metrics.final_value_alternative), THEME["secondary"])
-    render_legend_item("Capitale versato", format_eur(total_contributed), THEME["text_muted"])
-    st.altair_chart(
-        create_decision_paths_chart(plan_df, exit_metrics, inputs.alternative_return, inputs.exit_year),
-        use_container_width=True,
+        "Capital trajectory",
+        "Evoluzione del capitale nel tempo",
+        "La linea tratteggiata mostra il capitale effettivamente versato. La curva principale mostra il valore complessivo stimato del piano.",
     )
 
-with row_b:
+    render_legend_item("Valore totale stimato", format_eur(final_value), THEME["chart_main"])
+    render_legend_item("Capitale versato", format_eur(total_contributed), THEME["chart_neutral"])
+    render_legend_item("Crescita cumulata", format_eur(gain_value), THEME["chart_main_soft"])
+
+    st.altair_chart(create_growth_chart(plan_df), use_container_width=True)
+    close_panel()
+
+with right_col:
+    open_panel()
     section_header(
-        "Scenario comparison",
-        "Confronto diretto e range probabilistici",
-        "Le due card separano valore atteso e dispersione degli esiti. Questo aumenta la credibilità della decisione rispetto a una singola stima puntuale.",
+        "Decision view",
+        "Confronto diretto dei due esiti finali",
+        "Una sintesi compatta per leggere il vantaggio economico del mantenere il piano rispetto all’uscita con reinvestimento alternativo.",
     )
+
     render_insight_card(
-        "Restare investito",
+        "Valore finale se resti investito",
         format_eur(exit_metrics.final_value_stay),
-        f"Range simulato P10-P90: {format_eur(mc_metrics.stay_p10)} - {format_eur(mc_metrics.stay_p90)}.",
+        "Scenario base mantenendo il piano attivo fino alla scadenza.",
     )
-    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="tight-gap"></div>', unsafe_allow_html=True)
     render_insight_card(
-        "Uscire e reinvestire",
+        "Valore finale se esci e reinvesti",
         format_eur(exit_metrics.final_value_alternative),
-        f"Range simulato P10-P90: {format_eur(mc_metrics.exit_p10)} - {format_eur(mc_metrics.exit_p90)}.",
+        f"Scenario alternativo con uscita al {inputs.exit_year}° anno e reinvestimento al nuovo rendimento atteso.",
     )
+
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
+
+    a, b = st.columns(2)
+    with a:
         render_metric_card(
             label="Penale di uscita",
             value=format_eur(exit_metrics.exit_penalty_eur),
-            help_text=f"{format_pct(inputs.exit_penalty_pct * 100)} applicato su {format_eur(exit_metrics.contributed_until_exit)} versati fino all'uscita.",
+            help_text=(
+                f"{format_pct(inputs.exit_penalty_pct * 100)} applicato su "
+                f"{format_eur(exit_metrics.contributed_until_exit)} versati fino all’uscita."
+            ),
         )
-    with c2:
+    with b:
         render_metric_card(
-            label="Shortfall atteso vs stay",
-            value=format_eur(mc_metrics.expected_shortfall_exit),
-            help_text="Differenza media tra scenario stay e scenario exit all'interno della simulazione Monte Carlo.",
+            label="Costo medio atteso",
+            value=format_eur(mc_metrics.expected_cost_mc),
+            help_text="Differenza media tra stay ed exit considerando la simulazione Monte Carlo.",
         )
 
-risk_left, risk_right = st.columns([1, 1], gap="large")
-
-with risk_left:
-    section_header(
-        "Risk distribution",
-        "Distribuzione degli esiti a scadenza",
-        "La distribuzione rende visibile la dispersione dei risultati e aiuta a capire se la raccomandazione resta robusta anche fuori dal caso medio.",
+    st.markdown(
+        dedent(
+            f"""
+            <div class="subtle-note">
+                Parametri Monte Carlo. Incertezza <strong>{inputs.uncertainty_level}</strong>,
+                volatilità usata <strong>{mc_metrics.used_volatility_pct}%</strong>,
+                simulazioni <strong>{inputs.n_simulations:,}</strong>.
+            </div>
+            """
+        ).strip(),
+        unsafe_allow_html=True,
     )
-    st.altair_chart(create_distribution_chart(mc_metrics), use_container_width=True)
+    close_panel()
 
-with risk_right:
+bottom_left, bottom_right = st.columns([1, 1.12], gap="large")
+
+with bottom_left:
+    open_panel()
     section_header(
-        "Timing impact",
-        "Quanto costa uscire prima",
-        "Il costo dell'uscita non è solo la penale. È soprattutto il valore futuro sacrificato scegliendo di interrompere il compounding troppo presto.",
+        "Scenario comparison",
+        "Valore finale dei due scenari",
+        "Vista sintetica per confrontare il risultato a scadenza del piano con lo scenario di uscita anticipata.",
     )
+    st.altair_chart(
+        create_scenario_comparison_chart(
+            exit_metrics.final_value_stay,
+            exit_metrics.final_value_alternative,
+        ),
+        use_container_width=True,
+    )
+    close_panel()
+
+with bottom_right:
+    open_panel()
+    section_header(
+        "Compounding impact",
+        f"Quanto valore futuro perdi uscendo dopo {inputs.exit_year} anni",
+        "Questa vista mostra il capitale netto disponibile in uscita e il valore complessivo stimato che potresti catturare lasciando lavorare il tempo.",
+    )
+
     r1, r2 = st.columns(2)
     with r1:
         render_metric_card(
-            label="Capitale disponibile in uscita",
-            value=format_eur(exit_metrics.available_net_capital),
-            help_text="Valore immediatamente disponibile una volta dedotti penale e costi extra.",
-            delta_text=f"anno {inputs.exit_year}",
+            label="Capitale netto disponibile",
+            value=format_eur(compounding_metrics.available_net_capital),
+            help_text=f"Valore disponibile al {inputs.exit_year}° anno dopo penale e costi extra.",
+            delta_text=format_eur(compounding_metrics.exit_penalty_eur),
             delta_css="delta-neutral",
         )
     with r2:
         render_metric_card(
-            label="Valore futuro sacrificato",
-            value=format_eur(exit_metrics.opportunity_cost_abs),
-            help_text="Differenza tra valore finale mantenendo il piano e valore finale dello scenario alternativo.",
-            delta_text=format_pct(exit_metrics.opportunity_cost_pct),
+            label="Valore finale a scadenza",
+            value=format_eur(compounding_metrics.final_value_stay),
+            help_text="Valore finale stimato se il piano resta attivo fino alla durata prevista.",
+            delta_text=f"{inputs.duration_years} anni",
+            delta_css="delta-neutral",
+        )
+
+    r3, r4 = st.columns(2)
+    with r3:
+        render_metric_card(
+            label="Valore futuro non catturato",
+            value=format_eur(compounding_metrics.lost_compounding_abs),
+            help_text="Differenza tra valore finale a scadenza e capitale netto disponibile in uscita.",
+            delta_text="opportunità persa",
             delta_css="delta-negative",
             emphasis=True,
         )
+    with r4:
+        render_metric_card(
+            label="Quota di valore finale persa",
+            value=format_pct(compounding_metrics.lost_compounding_pct),
+            help_text="Percentuale del valore finale complessivo a cui rinunci uscendo prima della scadenza.",
+            delta_text=f"uscita al {inputs.exit_year}° anno",
+            delta_css="delta-neutral",
+        )
+
     if not compounding_table.empty:
-        st.altair_chart(create_exit_timing_chart(compounding_table, inputs.exit_year), use_container_width=True)
+        st.altair_chart(
+            create_lost_compounding_chart(compounding_table, inputs.exit_year),
+            use_container_width=True,
+        )
         st.markdown(
             dedent(
                 f"""
                 <div class="subtle-note">
-                    Lettura rapida. Nel punto selezionato hai disponibile <strong>{format_eur(exit_metrics.available_net_capital)}</strong>.
-                    Restando investito, il valore atteso finale sale a <strong>{format_eur(exit_metrics.final_value_stay)}</strong>.
+                    Lettura rapida. Se esci al <strong>{inputs.exit_year}° anno</strong> hai disponibile circa
+                    <strong>{format_eur(compounding_metrics.available_net_capital)}</strong>.
+                    Restando fino alla fine, la stima sale a
+                    <strong>{format_eur(compounding_metrics.final_value_stay)}</strong>.
                 </div>
                 """
             ).strip(),
             unsafe_allow_html=True,
         )
+    else:
+        st.info("Con una durata di 1 anno non esistono anni di uscita anticipata da confrontare.")
 
+    close_panel()
+
+open_panel()
 section_header(
     "Detailed view",
-    "Matrice di uscita per anno",
-    "Tabella di supporto per utenti avanzati. Utile per leggere come cambia il costo opportunità al variare del timing di uscita.",
+    "Perdita di compounding per anno di uscita",
+    "La tabella rende esplicito quanto capitale netto avresti disponibile uscendo in ciascun anno e quanta crescita futura lasceresti sul tavolo.",
 )
 
 if not compounding_table.empty:
@@ -1468,76 +1707,78 @@ if not compounding_table.empty:
             "Contributed Capital": "Capitale versato",
             "Exit Penalty EUR": "Penale uscita",
             "Available Net Capital": "Capitale netto disponibile",
-            "Lost Compounding EUR": "Valore futuro sacrificato",
-            "Lost Compounding %": "Valore perso %",
+            "Lost Compounding EUR": "Crescita composta persa",
+            "Lost Compounding %": "Crescita persa %",
         }
     )
 
     styler = (
-        table_df.style.hide(axis="index")
-        .format(
+    table_df.style
+    .hide(axis="index")
+    .format({
+        "Anno uscita": "{:.0f}",
+        "Valore uscita lordo": "{:,.0f} EUR",
+        "Capitale versato": "{:,.0f} EUR",
+        "Penale uscita": "{:,.0f} EUR",
+        "Capitale netto disponibile": "{:,.0f} EUR",
+        "Crescita composta persa": "{:,.0f} EUR",
+        "Crescita persa %": "{:.2f}%",
+    })
+        .bar(
+            subset=["Crescita persa %"],
+            color="#FF5A5F",
+            vmin=0,
+            vmax=100,
+        )
+        .set_properties(**{
+            "background-color": "#FFFFFF",
+            "color": "#111827",
+            "border-color": "#E5E7EB",
+            "font-size": "13px",
+        })
+        .set_table_styles([
             {
-                "Anno uscita": "{:.0f}",
-                "Valore uscita lordo": "{:,.0f} EUR",
-                "Capitale versato": "{:,.0f} EUR",
-                "Penale uscita": "{:,.0f} EUR",
-                "Capitale netto disponibile": "{:,.0f} EUR",
-                "Valore futuro sacrificato": "{:,.0f} EUR",
-                "Valore perso %": "{:.2f}%",
-            }
-        )
-        .bar(subset=["Valore perso %"], color="#FF5A5F", vmin=0, vmax=100)
-        .set_properties(
-            **{
-                "background-color": "#FFFFFF",
-                "color": "#111827",
-                "border-color": "#E5E7EB",
-                "font-size": "13px",
-            }
-        )
-        .set_table_styles(
-            [
-                {
-                    "selector": "table",
-                    "props": [
-                        ("border-collapse", "collapse"),
-                        ("width", "100%"),
-                        ("background-color", "#FFFFFF"),
-                        ("color", "#111827"),
-                        ("border", "1px solid #E5E7EB"),
-                    ],
-                },
-                {
-                    "selector": "thead th",
-                    "props": [
-                        ("background-color", "#F8FAFC"),
-                        ("color", "#475467"),
-                        ("font-weight", "700"),
-                        ("font-size", "12px"),
-                        ("border-bottom", "1px solid #E5E7EB"),
-                        ("padding", "10px 12px"),
-                        ("text-align", "left"),
-                    ],
-                },
-                {
-                    "selector": "tbody td",
-                    "props": [
-                        ("padding", "10px 12px"),
-                        ("border-bottom", "1px solid #EEF2F6"),
-                        ("background-color", "#FFFFFF"),
-                        ("color", "#111827"),
-                    ],
-                },
-            ]
-        )
+                "selector": "table",
+                "props": [
+                    ("border-collapse", "collapse"),
+                    ("width", "100%"),
+                    ("background-color", "#FFFFFF"),
+                    ("color", "#111827"),
+                    ("border", "1px solid #E5E7EB"),
+                ],
+            },
+            {
+                "selector": "thead th",
+                "props": [
+                    ("background-color", "#F8FAFC"),
+                    ("color", "#475467"),
+                    ("font-weight", "700"),
+                    ("font-size", "12px"),
+                    ("border-bottom", "1px solid #E5E7EB"),
+                    ("padding", "10px 12px"),
+                    ("text-align", "left"),
+                ],
+            },
+            {
+                "selector": "tbody td",
+                "props": [
+                    ("padding", "10px 12px"),
+                    ("border-bottom", "1px solid #EEF2F6"),
+                    ("background-color", "#FFFFFF"),
+                    ("color", "#111827"),
+                ],
+            },
+        ])
     )
 
     st.table(styler)
+
     st.markdown(
         dedent(
             """
             <div class="subtle-note">
-                Insight chiave. L'uscita anticipata anticipa la liquidità, ma interrompe il compounding. La tabella rende leggibile questo trade-off lungo tutta la timeline del piano.
+                Insight chiave. Più l’uscita è anticipata, più la crescita composta futura viene interrotta.
+                Questa vista traduce il costo della pazienza mancata in numeri direttamente leggibili.
             </div>
             """
         ).strip(),
@@ -1546,4 +1787,5 @@ if not compounding_table.empty:
 else:
     st.info("Nessun confronto disponibile perché il piano dura un solo anno.")
 
+close_panel()
 st.markdown("</div>", unsafe_allow_html=True)
